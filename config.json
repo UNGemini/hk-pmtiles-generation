@@ -14,7 +14,7 @@
   },
   "data": {
     "hong-kong-vector": {
-      "pmtiles": "hong-kong.pmtiles"
+      "pmtiles": "hong-kong-vector.pmtiles"
     }
   }
 }
