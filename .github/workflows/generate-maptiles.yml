@@ -81,15 +81,20 @@ jobs:
 
       - name: generate raster mbtiles from vector pmtiles
         run: |
-          docker run -d --name tileserver -p 8080:80 \
+          docker run -d --name tileserver -p 8080:8080 \
             -v $(pwd):/data maptiler/tileserver-gl -c /data/config.json
           
-          sleep 15
-
+          echo "Waiting 20 seconds for tileserver to spin up..."
+          sleep 20
+          
+          echo "--- AVAILABLE STYLES ---"
+          curl -s http://localhost:8080/styles.json || echo "Failed to fetch styles.json"
+          
           cat << 'EOF' > scrape_raster.py
           import urllib.request
           import sqlite3
           import math
+          import sys
 
           min_lng, min_lat, max_lng, max_lat = 113.8, 22.1, 114.5, 22.6
           min_zoom, max_zoom = 0, 14
@@ -114,12 +119,15 @@ jobs:
           c.execute('CREATE UNIQUE INDEX tile_index on tiles (zoom_level, tile_column, tile_row);')
 
           total_tiles = 0
+          errors = 0
+          
           for z in range(min_zoom, max_zoom + 1):
               x_min, y_max = deg2num(min_lat, min_lng, z)
               x_max, y_min = deg2num(max_lat, max_lng, z)
               
               for x in range(x_min, x_max + 1):
                   for y in range(y_min, y_max + 1):
+                      # Make sure the style name here matches the ID in your config.json
                       url = f"http://localhost:8080/styles/basic/{z}/{x}/{y}.png"
                       try:
                           req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
@@ -130,11 +138,17 @@ jobs:
                           c.execute('INSERT INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?, ?, ?, ?)', (z, x, tms_y, tile_data))
                           total_tiles += 1
                       except Exception as e:
-                          pass
+                          if errors < 10:
+                              print(f"Failed to fetch {url}: {e}")
+                          errors += 1
 
           conn.commit()
           conn.close()
-          print(f"Successfully baked {total_tiles} raster tiles into MBTiles archive.")
+          
+          print(f"\nSuccessfully baked {total_tiles} raster tiles. Encountered {errors} errors.")
+          
+          if total_tiles == 0:
+              sys.exit("Error: 0 tiles were successfully downloaded. Check the HTTP errors above.")
           EOF
           
           python3 scrape_raster.py
