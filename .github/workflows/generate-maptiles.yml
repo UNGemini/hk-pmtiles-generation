@@ -152,7 +152,7 @@ jobs:
           fi
 
           # (keep your scrape_raster.py mostly as-is, just make sure the style name matches)
-          # ... paste the Python scraper here ...
+          url = f"http://localhost:8080/styles/basic/{z}/{x}/{y}.png"
 
           python3 scrape_raster.py
           docker stop tileserver
