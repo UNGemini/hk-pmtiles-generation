@@ -137,27 +137,24 @@ jobs:
             -v $(pwd):/data \
             maptiler/tileserver-gl -c /data/config.json
 
-          echo "Waiting for tileserver..."
-          for i in {1..40}; do
-            if curl -sf http://localhost:8080/health > /dev/null; then
-              echo "Health check OK"
+          echo "Waiting for tileserver to fully load styles..."
+          for i in {1..60}; do
+            if curl -sf http://localhost:8080/styles.json | grep -q basic; then
+              echo "Style 'basic' is available!"
               break
             fi
-            sleep 2
+            echo "Still waiting... ($i)"
+            sleep 3
           done
 
-          echo "===== Docker logs ====="
+          echo "===== Full docker logs ====="
           docker logs tileserver
 
           echo "===== /styles.json ====="
-          curl -s http://localhost:8080/styles.json || echo "Failed to get styles.json"
+          curl -s http://localhost:8080/styles.json
 
-          echo "===== /styles/basic/style.json ====="
-          curl -s http://localhost:8080/styles/basic/style.json | head -c 300 || echo "Failed to get style"
-
-          echo "===== Listing /data ====="
-          ls -la
-          ls -la styles/ || true
+          echo "===== Testing a tile ====="
+          curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/styles/basic/10/800/400.png
 
       - name: download pmtiles cli
         run: |
