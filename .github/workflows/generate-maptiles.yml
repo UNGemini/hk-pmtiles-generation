@@ -68,12 +68,22 @@ jobs:
         with:
           name: vector-tiles
 
-      - name: prepare data + style + assets
+      - name: prepare data + style + config
         run: |
-          mkdir -p data styles fonts sprites
-          mv hong-kong.pmtiles data/hong-kong-vector.pmtiles
+          mkdir -p data styles
 
-          # Minimal Protomaps-style config (light theme)
+          # Move the vector tiles
+          if [ -f "hong-kong.pmtiles" ]; then
+            mv hong-kong.pmtiles data/hong-kong-vector.pmtiles
+          elif [ -f "vector-tiles/hong-kong.pmtiles" ]; then
+            mv vector-tiles/hong-kong.pmtiles data/hong-kong-vector.pmtiles
+          else
+            echo "Error: hong-kong.pmtiles not found"
+            ls -la
+            exit 1
+          fi
+
+          # Write config.json
           cat > config.json << 'EOF'
           {
             "options": {
@@ -102,66 +112,23 @@ jobs:
           }
           EOF
 
-          # Very basic style that references the local PMTiles
-          # (You can replace this with a full exported style from protomaps/basemaps)
+          # Write the style (paste the full JSON you provided, with the fixed source)
           cat > styles/basic.json << 'EOF'
           {
             "version": 8,
-            "name": "Basic Hong Kong",
+            "name": "basic",
+            "glyphs": "https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf",
+            "sprite": "https://protomaps.github.io/basemaps-assets/sprites/v4/light",
             "sources": {
               "protomaps": {
                 "type": "vector",
                 "url": "pmtiles://hong-kong-vector.pmtiles"
               }
             },
-            "glyphs": "fonts/{fontstack}/{range}.pbf",
-            "sprite": "sprites/light",
-            "layers": [
-              {
-                "id": "background",
-                "type": "background",
-                "paint": { "background-color": "#f8f4f0" }
-              },
-              {
-                "id": "earth",
-                "type": "fill",
-                "source": "protomaps",
-                "source-layer": "earth",
-                "paint": { "fill-color": "#f8f4f0" }
-              },
-              {
-                "id": "landuse",
-                "type": "fill",
-                "source": "protomaps",
-                "source-layer": "landuse",
-                "paint": { "fill-color": "#e0e0e0" }
-              },
-              {
-                "id": "water",
-                "type": "fill",
-                "source": "protomaps",
-                "source-layer": "water",
-                "paint": { "fill-color": "#80b0d0" }
-              },
-              {
-                "id": "roads",
-                "type": "line",
-                "source": "protomaps",
-                "source-layer": "roads",
-                "paint": {
-                  "line-color": "#ffffff",
-                  "line-width": ["interpolate", ["linear"], ["zoom"], 8, 0.5, 14, 3]
-                }
-              }
-            ]
+            "layers": [ ... ]   ← paste the entire layers array from your file
           }
           EOF
-
-          # Download minimal fonts + sprites (or cache them in the repo)
-          # For production you should vendor the full set from protomaps/basemaps-assets
-          echo "Note: for proper labels you need fonts + sprites from https://github.com/protomaps/basemaps-assets"
-          # Placeholder – add real download steps or commit the assets
-
+    
       - name: generate raster mbtiles from vector pmtiles
         run: |
           docker run -d --name tileserver -p 8080:80 \
