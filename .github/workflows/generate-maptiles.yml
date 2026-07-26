@@ -135,11 +135,11 @@ jobs:
         run: |
           docker run -d --name tileserver -p 8080:80 \
             -v $(pwd):/data \
-            maptiler/tileserver-gl -c /data/config.json
+            maptiler/tileserver-gl:v4.11.1 -c /data/config.json
 
           echo "Waiting for tileserver to fully load styles..."
           for i in {1..60}; do
-            if curl -sf http://localhost:8080/styles.json | grep -q basic; then
+            if curl -sf http://127.0.0.1:8080/styles.json | grep -q basic; then
               echo "Style 'basic' is available!"
               break
             fi
@@ -151,10 +151,10 @@ jobs:
           docker logs tileserver
 
           echo "===== /styles.json ====="
-          curl -s http://localhost:8080/styles.json
+          curl -s http://127.0.0.1:8080/styles.json
 
           echo "===== Testing a tile ====="
-          curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/styles/basic/10/800/400.png
+          curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8080/styles/basic/10/800/400.png
 
       - name: download pmtiles cli
         run: |
