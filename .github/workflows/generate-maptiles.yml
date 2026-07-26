@@ -76,8 +76,8 @@ jobs:
 
       - name: prepare and move data
         run: |
-          mkdir -p data
-          mv hong-kong.pmtiles data/
+          mkdir -p data styles
+          mv vector-tiles/hong-kong.pmtiles data/hong-kong-vector.pmtiles
 
       - name: generate raster mbtiles from vector pmtiles
         run: |
