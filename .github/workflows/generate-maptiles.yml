@@ -282,11 +282,13 @@ jobs:
   release:
     needs: [build-vector, build-raster]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # <--- Grants permission to create/update releases
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Fetches tags properly
+          fetch-depth: 0
 
       - name: Download all vector & raster artifacts
         uses: actions/download-artifact@v4
@@ -301,10 +303,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Delete existing release/tag if present
           gh release delete latest --yes --cleanup-tag || true
-
-          # Create a fresh release with attached PMTiles
           gh release create latest release_assets/* \
             --title "Latest HK PMTiles Build" \
             --notes "Automated build from workflow run #${{ github.run_number }}" \
