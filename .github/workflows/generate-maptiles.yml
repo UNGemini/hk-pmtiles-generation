@@ -16,14 +16,28 @@ jobs:
       - name: checkout repository
         uses: actions/checkout@v4
 
+      - name: Cache vector tiles
+        id: cache-vector
+        uses: actions/cache@v4
+        with:
+          path: hong-kong.pmtiles
+          key: hong-kong-vector-debug
+
+      - name: Skip generation if cache hit
+        if: steps.cache-vector.outputs.cache-hit == 'true'
+        run: echo "✅ Vector tiles restored from cache – skipping generation"
+
       - name: protomaps basemaps repo
+        if: steps.cache-vector.outputs.cache-hit != 'true'
         run: git clone --depth 1 https://github.com/protomaps/basemaps.git
 
       - name: download osm
+        if: steps.cache-vector.outputs.cache-hit != 'true'
         run: |
           wget -q https://download.geofabrik.de/asia/china/hong-kong-latest.osm.pbf -O hong-kong.osm.pbf
 
       - name: download data sources
+        if: steps.cache-vector.outputs.cache-hit != 'true'
         working-directory: basemaps/tiles
         run: |
           mkdir -p data/sources
@@ -31,6 +45,7 @@ jobs:
           wget -q -c --tries=5 https://qrank.toolforge.org/download/qrank.csv.gz -O data/sources/qrank.csv.gz
 
       - name: setup java
+        if: steps.cache-vector.outputs.cache-hit != 'true'
         uses: actions/setup-java@v4
         with:
           java-version: '21'
@@ -38,6 +53,7 @@ jobs:
           cache: 'maven'
 
       - name: generate vector tiles
+        if: steps.cache-vector.outputs.cache-hit != 'true'
         working-directory: basemaps/tiles
         run: |
           mvn -B -q clean package
