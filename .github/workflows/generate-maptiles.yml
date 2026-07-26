@@ -283,13 +283,17 @@ jobs:
     needs: [build-vector, build-raster]
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetches tags properly
+
       - name: Download all vector & raster artifacts
         uses: actions/download-artifact@v4
 
       - name: Prepare assets
         run: |
           mkdir -p release_assets
-          # Move and normalize filenames so they match your wget endpoint
           mv vector-tiles/hong-kong.pmtiles release_assets/hongkong.pmtiles
           mv raster-tiles/hong-kong-raster.pmtiles release_assets/hongkong-raster.pmtiles
 
@@ -297,10 +301,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Delete existing tag/release if it exists so "latest" stays up-to-date
-          gh release delete latest --yes || true
-          git tag -d latest || true
-          git push origin :refs/tags/latest || true
+          # Delete existing release/tag if present
+          gh release delete latest --yes --cleanup-tag || true
 
           # Create a fresh release with attached PMTiles
           gh release create latest release_assets/* \
