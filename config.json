@@ -3,7 +3,7 @@
     "paths": {
       "root": ".",
       "styles": "styles",
-      "pmtiles": "data"
+      "mbtiles": "data"
     },
     "serveStaticMaps": true
   },
