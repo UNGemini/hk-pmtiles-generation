@@ -3,23 +3,13 @@
     "paths": {
       "root": "/data",
       "styles": "styles",
-      "pmtiles": "/data",
-      "fonts": "fonts",
-      "sprites": "sprites"
+      "pmtiles": "/data"
     },
     "serveStaticMaps": true
   },
   "styles": {
     "basic": {
-      "style": "style.json",
-      "tilejson": {
-        "bounds": [113.8, 22.1, 114.5, 22.6]
-      }
-    }
-  },
-  "data": {
-    "hong-kong-vector": {
-      "pmtiles": "hong-kong-vector.pmtiles"
+      "style": "style.json"
     }
   }
 }
