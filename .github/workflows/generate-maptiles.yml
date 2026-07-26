@@ -77,7 +77,8 @@ jobs:
       - name: install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgl1-mesa-dev libgbm-dev libosmesa6-dev xvfb
+          # Added libpng-dev and pkg-config to ensure headers match
+          sudo apt-get install -y libgl1-mesa-dev libgbm-dev libosmesa6-dev xvfb libpng-dev pkg-config
 
       - name: setup node.js
         uses: actions/setup-node@v4
@@ -85,7 +86,8 @@ jobs:
           node-version: '20'
 
       - name: install tileserver-gl
-        run: npm install -g tileserver-gl
+        # Force a rebuild of the native modules using the runner's installed libpng headers
+        run: npm install -g tileserver-gl --build-from-source
 
       - name: prepare tileserver directories
         run: |
