@@ -3,13 +3,13 @@
     "paths": {
       "root": ".",
       "styles": "styles",
-      "mbtiles": "data"
+      "mbtiles": "."
     },
     "serveStaticMaps": true
   },
   "styles": {
     "basic": {
-      "style": "style.json"
+      "style": "styles/style.json"
     }
   },
   "data": {
