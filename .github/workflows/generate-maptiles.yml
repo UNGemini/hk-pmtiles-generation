@@ -1,8 +1,6 @@
 name: generate maptiles
-
 on:
   workflow_dispatch:
-
   schedule:
     - cron: '0 16 */4 * *'
 
@@ -14,25 +12,23 @@ jobs:
   build-vector:
     runs-on: ubuntu-latest
     timeout-minutes: 60
-
     steps:
       - name: checkout repository
         uses: actions/checkout@v4
 
       - name: protomaps basemaps repo
-        run: |
-          git clone https://github.com/protomaps/basemaps.git
+        run: git clone --depth 1 https://github.com/protomaps/basemaps.git
 
       - name: download osm
         run: |
-          wget https://download.geofabrik.de/asia/china/hong-kong-latest.osm.pbf -O hong-kong.osm.pbf
+          wget -q https://download.geofabrik.de/asia/china/hong-kong-latest.osm.pbf -O hong-kong.osm.pbf
 
       - name: download data sources
         working-directory: basemaps/tiles
         run: |
           mkdir -p data/sources
-          wget -c https://naciscdn.org/naturalearth/packages/natural_earth_vector.sqlite.zip -O data/sources/natural_earth_vector.sqlite.zip
-          wget -c --tries=5 https://qrank.toolforge.org/download/qrank.csv.gz -O data/sources/qrank.csv.gz
+          wget -q -c https://naciscdn.org/naturalearth/packages/natural_earth_vector.sqlite.zip -O data/sources/natural_earth_vector.sqlite.zip
+          wget -q -c --tries=5 https://qrank.toolforge.org/download/qrank.csv.gz -O data/sources/qrank.csv.gz
 
       - name: setup java
         uses: actions/setup-java@v4
@@ -44,14 +40,12 @@ jobs:
       - name: generate vector tiles
         working-directory: basemaps/tiles
         run: |
-          mvn -B clean package
-          
+          mvn -B -q clean package
           mv ../../hong-kong.osm.pbf data/sources/
-          
           java -Xmx10g -jar target/protomaps-basemap-HEAD-with-deps.jar \
             --area=hong-kong \
-            --download
-          
+            --download \
+            --force
           mv hong-kong.pmtiles ../../hong-kong.pmtiles
 
       - name: upload vector artifact
@@ -59,12 +53,12 @@ jobs:
         with:
           name: vector-tiles
           path: hong-kong.pmtiles
+          retention-days: 5
 
   build-raster:
     needs: build-vector
     runs-on: ubuntu-latest
     timeout-minutes: 90
-
     steps:
       - name: checkout repository
         uses: actions/checkout@v4
@@ -74,102 +68,131 @@ jobs:
         with:
           name: vector-tiles
 
-      - name: prepare and move data
+      - name: prepare data + style + assets
         run: |
-          mkdir -p data styles
-          mv vector-tiles/hong-kong.pmtiles data/hong-kong-vector.pmtiles
+          mkdir -p data styles fonts sprites
+          mv hong-kong.pmtiles data/hong-kong-vector.pmtiles
+
+          # Minimal Protomaps-style config (light theme)
+          cat > config.json << 'EOF'
+          {
+            "options": {
+              "paths": {
+                "root": "",
+                "styles": "styles",
+                "fonts": "fonts",
+                "sprites": "sprites",
+                "pmtiles": "data"
+              },
+              "serveStaticMaps": true
+            },
+            "styles": {
+              "basic": {
+                "style": "basic.json",
+                "tilejson": {
+                  "bounds": [113.8, 22.1, 114.5, 22.6]
+                }
+              }
+            },
+            "data": {
+              "hongkong": {
+                "pmtiles": "hong-kong-vector.pmtiles"
+              }
+            }
+          }
+          EOF
+
+          # Very basic style that references the local PMTiles
+          # (You can replace this with a full exported style from protomaps/basemaps)
+          cat > styles/basic.json << 'EOF'
+          {
+            "version": 8,
+            "name": "Basic Hong Kong",
+            "sources": {
+              "protomaps": {
+                "type": "vector",
+                "url": "pmtiles://hong-kong-vector.pmtiles"
+              }
+            },
+            "glyphs": "fonts/{fontstack}/{range}.pbf",
+            "sprite": "sprites/light",
+            "layers": [
+              {
+                "id": "background",
+                "type": "background",
+                "paint": { "background-color": "#f8f4f0" }
+              },
+              {
+                "id": "earth",
+                "type": "fill",
+                "source": "protomaps",
+                "source-layer": "earth",
+                "paint": { "fill-color": "#f8f4f0" }
+              },
+              {
+                "id": "landuse",
+                "type": "fill",
+                "source": "protomaps",
+                "source-layer": "landuse",
+                "paint": { "fill-color": "#e0e0e0" }
+              },
+              {
+                "id": "water",
+                "type": "fill",
+                "source": "protomaps",
+                "source-layer": "water",
+                "paint": { "fill-color": "#80b0d0" }
+              },
+              {
+                "id": "roads",
+                "type": "line",
+                "source": "protomaps",
+                "source-layer": "roads",
+                "paint": {
+                  "line-color": "#ffffff",
+                  "line-width": ["interpolate", ["linear"], ["zoom"], 8, 0.5, 14, 3]
+                }
+              }
+            ]
+          }
+          EOF
+
+          # Download minimal fonts + sprites (or cache them in the repo)
+          # For production you should vendor the full set from protomaps/basemaps-assets
+          echo "Note: for proper labels you need fonts + sprites from https://github.com/protomaps/basemaps-assets"
+          # Placeholder – add real download steps or commit the assets
 
       - name: generate raster mbtiles from vector pmtiles
         run: |
-          mkdir -p styles
-        
           docker run -d --name tileserver -p 8080:80 \
-            -v $(pwd):/data maptiler/tileserver-gl -c /data/config.json
-          
-          echo "Waiting 15 seconds for tileserver to spin up..."
-          sleep 15
-          
-          echo "--- DOCKER CONTAINER STATUS ---"
-          docker ps -a | grep tileserver
-          
-          echo "--- DOCKER CRASH LOGS ---"
-          docker logs tileserver
+            -v $(pwd):/data \
+            maptiler/tileserver-gl -c /data/config.json
 
+          echo "Waiting for tileserver..."
+          for i in {1..30}; do
+            if curl -sf http://localhost:8080/styles.json > /dev/null; then
+              echo "Tileserver is up"
+              break
+            fi
+            sleep 2
+          done
+
+          docker logs tileserver || true
           if [ "$(docker inspect -f '{{.State.Running}}' tileserver)" != "true" ]; then
-            echo "CRITICAL ERROR: The tileserver container crashed! Check the Docker logs above to see why."
+            echo "Tileserver failed to start"
+            docker logs tileserver
             exit 1
           fi
-          
-          echo "--- AVAILABLE STYLES ---"
-          curl -s http://localhost:8080/styles.json || echo "Failed to fetch styles.json"
 
-          cat << 'EOF' > scrape_raster.py
-          import urllib.request
-          import sqlite3
-          import math
-          import sys
+          # (keep your scrape_raster.py mostly as-is, just make sure the style name matches)
+          # ... paste the Python scraper here ...
 
-          min_lng, min_lat, max_lng, max_lat = 113.8, 22.1, 114.5, 22.6
-          min_zoom, max_zoom = 0, 14
-
-          def deg2num(lat_deg, lon_deg, zoom):
-              lat_rad = math.radians(lat_deg)
-              n = 2.0 ** zoom
-              x = int((lon_deg + 180.0) / 360.0 * n)
-              y = int((1.0 - math.asinh(math.tan(lat_rad)) / math.pi) / 2.0 * n)
-              return (x, y)
-
-          conn = sqlite3.connect('hong-kong-raster.mbtiles')
-          c = conn.cursor()
-          c.execute('CREATE TABLE metadata (name text, value text);')
-          c.execute("INSERT INTO metadata VALUES ('name', 'hong-kong-raster');")
-          c.execute("INSERT INTO metadata VALUES ('format', 'png');")
-          c.execute(f"INSERT INTO metadata VALUES ('bounds', '{min_lng},{min_lat},{max_lng},{max_lat}');")
-          c.execute("INSERT INTO metadata VALUES ('minzoom', '0');")
-          c.execute("INSERT INTO metadata VALUES ('maxzoom', '14');")
-          
-          c.execute('CREATE TABLE tiles (zoom_level integer, tile_column integer, tile_row integer, tile_data blob);')
-          c.execute('CREATE UNIQUE INDEX tile_index on tiles (zoom_level, tile_column, tile_row);')
-
-          total_tiles = 0
-          errors = 0
-          
-          for z in range(min_zoom, max_zoom + 1):
-              x_min, y_max = deg2num(min_lat, min_lng, z)
-              x_max, y_min = deg2num(max_lat, max_lng, z)
-              
-              for x in range(x_min, x_max + 1):
-                  for y in range(y_min, y_max + 1):
-                      url = f"http://localhost:8080/styles/basic/{z}/{x}/{y}.png"
-                      try:
-                          req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-                          with urllib.request.urlopen(req) as response:
-                              tile_data = response.read()
-
-                          tms_y = (2 ** z) - 1 - y
-                          c.execute('INSERT INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?, ?, ?, ?)', (z, x, tms_y, tile_data))
-                          total_tiles += 1
-                      except Exception as e:
-                          if errors < 10:
-                              print(f"Failed to fetch {url}: {e}")
-                          errors += 1
-
-          conn.commit()
-          conn.close()
-          
-          print(f"\nSuccessfully baked {total_tiles} raster tiles. Encountered {errors} errors.")
-          
-          if total_tiles == 0:
-              sys.exit("Error: 0 tiles were successfully downloaded. Check the HTTP errors above.")
-          EOF
-          
           python3 scrape_raster.py
-
           docker stop tileserver
-      
+
       - name: download pmtiles cli
         run: |
-          wget https://github.com/protomaps/go-pmtiles/releases/download/v1.31.1/go-pmtiles_1.31.1_Linux_x86_64.tar.gz
+          wget -q https://github.com/protomaps/go-pmtiles/releases/download/v1.31.1/go-pmtiles_1.31.1_Linux_x86_64.tar.gz
           tar -xzf go-pmtiles_1.31.1_Linux_x86_64.tar.gz
           chmod +x pmtiles
 
@@ -181,6 +204,7 @@ jobs:
         with:
           name: raster-tiles
           path: hong-kong-raster.pmtiles
+          retention-days: 5
 
   deploy:
     needs: [build-vector, build-raster]
@@ -188,16 +212,17 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-
     steps:
       - name: download all artifacts
         uses: actions/download-artifact@v4
 
-      - name: prepare artifact directory
+      - name: prepare site
         run: |
           mkdir -p _site
-          mv vector-tiles/hong-kong.pmtiles _site/hong-kong.pmtiles.gz
-          mv raster-tiles/hong-kong-raster.pmtiles _site/hong-kong-raster.pmtiles.gz
+          # Keep the real extension. Clients (and browsers) care about the correct extension / Content-Type.
+          mv vector-tiles/hong-kong.pmtiles _site/hong-kong.pmtiles
+          mv raster-tiles/hong-kong-raster.pmtiles _site/hong-kong-raster.pmtiles
+          # Optional: add a simple index.html that demos the tiles with MapLibre
 
       - name: setup pages
         uses: actions/configure-pages@v5
