@@ -9,7 +9,7 @@
   },
   "styles": {
     "basic": {
-      "style": "styles/style.json"
+      "style": "style.json"
     }
   },
   "data": {
