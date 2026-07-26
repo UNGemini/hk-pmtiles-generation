@@ -81,15 +81,26 @@ jobs:
 
       - name: generate raster mbtiles from vector pmtiles
         run: |
-          docker run -d --name tileserver -p 8080:8080 \
+          docker run -d --name tileserver -p 8080:80 \
             -v $(pwd):/data maptiler/tileserver-gl -c /data/config.json
           
-          echo "Waiting 20 seconds for tileserver to spin up..."
-          sleep 20
+          echo "Waiting 15 seconds for tileserver to spin up..."
+          sleep 15
+          
+          echo "--- DOCKER CONTAINER STATUS ---"
+          docker ps -a | grep tileserver
+          
+          echo "--- DOCKER CRASH LOGS ---"
+          docker logs tileserver
+
+          if [ "$(docker inspect -f '{{.State.Running}}' tileserver)" != "true" ]; then
+            echo "CRITICAL ERROR: The tileserver container crashed! Check the Docker logs above to see why."
+            exit 1
+          fi
           
           echo "--- AVAILABLE STYLES ---"
           curl -s http://localhost:8080/styles.json || echo "Failed to fetch styles.json"
-          
+
           cat << 'EOF' > scrape_raster.py
           import urllib.request
           import sqlite3
@@ -127,7 +138,6 @@ jobs:
               
               for x in range(x_min, x_max + 1):
                   for y in range(y_min, y_max + 1):
-                      # Make sure the style name here matches the ID in your config.json
                       url = f"http://localhost:8080/styles/basic/{z}/{x}/{y}.png"
                       try:
                           req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
