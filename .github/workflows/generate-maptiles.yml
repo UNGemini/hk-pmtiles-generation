@@ -74,31 +74,72 @@ jobs:
         with:
           name: vector-tiles
 
-      - name: install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev libgl1-mesa-dev libgbm-dev libosmesa6-dev xvfb
-
-      - name: setup node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: install tileserver-gl and fix canvas
-        run: |
-          npm install -g tileserver-gl
-
-      - name: prepare tileserver directories
+      - name: prepare and move data
         run: |
           mkdir -p data
           mv hong-kong.pmtiles data/
 
       - name: generate raster mbtiles from vector pmtiles
         run: |
-          xvfb-run tileserver-gl config.json \
-            --export basic hong-kong-raster.mbtiles \
-            --minzoom 0 --maxzoom 14 \
-            --bbox 113.8,22.1,114.5,22.6
+          docker run -d --name tileserver -p 8080:80 \
+            -v $(pwd):/data maptiler/tileserver-gl -c /data/config.json
+          
+          sleep 15
+
+          cat << 'EOF' > scrape_raster.py
+          import urllib.request
+          import sqlite3
+          import math
+
+          min_lng, min_lat, max_lng, max_lat = 113.8, 22.1, 114.5, 22.6
+          min_zoom, max_zoom = 0, 14
+
+          def deg2num(lat_deg, lon_deg, zoom):
+              lat_rad = math.radians(lat_deg)
+              n = 2.0 ** zoom
+              x = int((lon_deg + 180.0) / 360.0 * n)
+              y = int((1.0 - math.asinh(math.tan(lat_rad)) / math.pi) / 2.0 * n)
+              return (x, y)
+
+          conn = sqlite3.connect('hong-kong-raster.mbtiles')
+          c = conn.cursor()
+          c.execute('CREATE TABLE metadata (name text, value text);')
+          c.execute("INSERT INTO metadata VALUES ('name', 'hong-kong-raster');")
+          c.execute("INSERT INTO metadata VALUES ('format', 'png');")
+          c.execute(f"INSERT INTO metadata VALUES ('bounds', '{min_lng},{min_lat},{max_lng},{max_lat}');")
+          c.execute("INSERT INTO metadata VALUES ('minzoom', '0');")
+          c.execute("INSERT INTO metadata VALUES ('maxzoom', '14');")
+          
+          c.execute('CREATE TABLE tiles (zoom_level integer, tile_column integer, tile_row integer, tile_data blob);')
+          c.execute('CREATE UNIQUE INDEX tile_index on tiles (zoom_level, tile_column, tile_row);')
+
+          total_tiles = 0
+          for z in range(min_zoom, max_zoom + 1):
+              x_min, y_max = deg2num(min_lat, min_lng, z)
+              x_max, y_min = deg2num(max_lat, max_lng, z)
+              
+              for x in range(x_min, x_max + 1):
+                  for y in range(y_min, y_max + 1):
+                      url = f"http://localhost:8080/styles/basic/{z}/{x}/{y}.png"
+                      try:
+                          req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                          with urllib.request.urlopen(req) as response:
+                              tile_data = response.read()
+
+                          tms_y = (2 ** z) - 1 - y
+                          c.execute('INSERT INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?, ?, ?, ?)', (z, x, tms_y, tile_data))
+                          total_tiles += 1
+                      except Exception as e:
+                          pass
+
+          conn.commit()
+          conn.close()
+          print(f"Successfully baked {total_tiles} raster tiles into MBTiles archive.")
+          EOF
+          
+          python3 scrape_raster.py
+
+          docker stop tileserver
       
       - name: download pmtiles cli
         run: |
