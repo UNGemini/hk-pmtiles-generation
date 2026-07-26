@@ -87,21 +87,25 @@ jobs:
       - name: install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgl1-mesa-dev libgbm-dev libosmesa6-dev xvfb
+          sudo apt-get install -y \
+            libgl1-mesa-dev libgbm-dev libosmesa6-dev \
+            libpng-dev libpng16-16 \
+            xvfb build-essential
 
       - name: setup node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: install tileserver-gl
-        run: npm install -g tileserver-gl
+      - name: install tileserver-gl (specific version)
+        run: |
+          # Try a version that historically had better binary compatibility
+          npm install -g tileserver-gl@4.11.1
 
       - name: prepare data + config + style
         run: |
           mkdir -p data styles fonts sprites
 
-          # Move vector tiles
           if [ -f "hong-kong.pmtiles" ]; then
             mv hong-kong.pmtiles data/hong-kong-vector.pmtiles
           elif [ -f "vector-tiles/hong-kong.pmtiles" ]; then
@@ -112,10 +116,8 @@ jobs:
             exit 1
           fi
 
-          # Copy style from repo
           cp style.json styles/style.json
 
-          # Write config
           cat > config.json << 'EOF'
           {
             "options": {
@@ -143,7 +145,6 @@ jobs:
 
       - name: start tileserver and scrape tiles
         run: |
-          # Start tileserver and capture logs
           xvfb-run -a tileserver-gl config.json --port 8080 > tileserver.log 2>&1 &
           TILESERVER_PID=$!
           echo "Tileserver PID: $TILESERVER_PID"
@@ -154,8 +155,7 @@ jobs:
               echo "Health check passed"
               break
             fi
-            # Show logs if it's taking long
-            if [ $i -eq 10 ] || [ $i -eq 20 ]; then
+            if [ $i -eq 8 ] || [ $i -eq 20 ]; then
               echo "===== tileserver.log so far ====="
               cat tileserver.log || true
             fi
@@ -165,24 +165,20 @@ jobs:
           echo "===== Full tileserver.log ====="
           cat tileserver.log || true
 
-          echo "===== /styles.json ====="
-          curl -s http://127.0.0.1:8080/styles.json || echo "styles.json failed"
-
-          # Check if process is still running
           if ! kill -0 $TILESERVER_PID 2>/dev/null; then
-            echo "ERROR: tileserver process has already died"
+            echo "ERROR: tileserver process died"
             exit 1
           fi
 
-          # ----- scraper (same as before) -----
+          echo "===== /styles.json ====="
+          curl -s http://127.0.0.1:8080/styles.json || echo "styles.json failed"
+
+          # Scraper
           cat > scrape_raster.py << 'EOF'
-          import urllib.request
-          import sqlite3
-          import math
-          import sys
+          import urllib.request, sqlite3, math, sys
 
           min_lng, min_lat, max_lng, max_lat = 113.8, 22.1, 114.5, 22.6
-          min_zoom, max_zoom = 0, 12   # temporarily lower maxzoom for testing
+          min_zoom, max_zoom = 0, 12
 
           def deg2num(lat_deg, lon_deg, zoom):
               lat_rad = math.radians(lat_deg)
@@ -208,35 +204,31 @@ jobs:
           for z in range(min_zoom, max_zoom + 1):
               x_min, y_max = deg2num(min_lat, min_lng, z)
               x_max, y_min = deg2num(max_lat, max_lng, z)
-              print(f"Zoom {z}: x={x_min}..{x_max}, y={y_min}..{y_max}")
+              print(f"Zoom {z}: x={x_min}..{x_max} y={y_min}..{y_max}")
 
               for x in range(x_min, x_max + 1):
                   for y in range(y_min, y_max + 1):
                       url = f"http://127.0.0.1:8080/styles/basic/{z}/{x}/{y}.png"
                       try:
                           req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-                          with urllib.request.urlopen(req, timeout=20) as response:
-                              tile_data = response.read()
+                          with urllib.request.urlopen(req, timeout=20) as resp:
+                              tile_data = resp.read()
                           tms_y = (2 ** z) - 1 - y
-                          c.execute(
-                              'INSERT INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?, ?, ?, ?)',
-                              (z, x, tms_y, tile_data)
-                          )
+                          c.execute('INSERT INTO tiles VALUES (?, ?, ?, ?)', (z, x, tms_y, tile_data))
                           total_tiles += 1
                       except Exception as e:
-                          if errors < 10:
+                          if errors < 8:
                               print(f"Failed {url}: {e}")
                           errors += 1
 
           conn.commit()
           conn.close()
-          print(f"\nSuccessfully baked {total_tiles} raster tiles. Errors: {errors}")
+          print(f"\nBaked {total_tiles} tiles, {errors} errors")
           if total_tiles == 0:
-              sys.exit("Error: 0 tiles downloaded")
+              sys.exit("No tiles downloaded")
           EOF
 
           python3 scrape_raster.py
-
           kill $TILESERVER_PID || true
 
       - name: download pmtiles cli
