@@ -1,9 +1,9 @@
 {
   "options": {
     "paths": {
-      "root": ".",
+      "root": "/data",
       "styles": "styles",
-      "pmtiles": ".",
+      "pmtiles": "/data",
       "fonts": "fonts",
       "sprites": "sprites"
     },
