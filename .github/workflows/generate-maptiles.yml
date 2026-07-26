@@ -70,50 +70,51 @@ jobs:
 
       - name: prepare data + style + config
         run: |
-          mkdir -p data styles
+          mkdir -p data styles fonts sprites
 
-          # Move the vector tiles
+          # move the pmtiles
           if [ -f "hong-kong.pmtiles" ]; then
-            mv hong-kong.pmtiles data/hong-kong-vector.pmtiles
+            mv hong-kong.pmtiles hong-kong-vector.pmtiles
           elif [ -f "vector-tiles/hong-kong.pmtiles" ]; then
-            mv vector-tiles/hong-kong.pmtiles data/hong-kong-vector.pmtiles
+            mv vector-tiles/hong-kong.pmtiles hong-kong-vector.pmtiles
           else
-            echo "Error: hong-kong.pmtiles not found"
+            echo "hong-kong.pmtiles not found"
             ls -la
             exit 1
           fi
 
-          # Write config.json
+          # config.json (fonts & sprites directories now exist)
           cat > config.json << 'EOF'
           {
             "options": {
               "paths": {
-                "root": "",
+                "root": ".",
                 "styles": "styles",
+                "pmtiles": ".",
                 "fonts": "fonts",
-                "sprites": "sprites",
-                "pmtiles": "data"
+                "sprites": "sprites"
               },
               "serveStaticMaps": true
             },
             "styles": {
               "basic": {
-                "style": "basic.json",
+                "style": "style.json",
                 "tilejson": {
                   "bounds": [113.8, 22.1, 114.5, 22.6]
                 }
               }
             },
             "data": {
-              "hongkong": {
+              "hong-kong-vector": {
                 "pmtiles": "hong-kong-vector.pmtiles"
               }
             }
           }
           EOF
 
-          # Write the style (paste the full JSON you provided, with the fixed source)
-          cat > styles/basic.json << 'EOF'
+          # style.json – make sure the source is correct
+          # (paste your full style here, only change the source URL)
+          cat > styles/style.json << 'EOF'
           {
             "version": 8,
             "name": "basic",
@@ -125,7 +126,7 @@ jobs:
                 "url": "pmtiles://hong-kong-vector.pmtiles"
               }
             },
-            "layers": [ ... ]   ← paste the entire layers array from your file
+            "layers": [ ... your full layers array ... ]
           }
           EOF
     
