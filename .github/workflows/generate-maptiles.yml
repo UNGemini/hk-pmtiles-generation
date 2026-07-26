@@ -81,6 +81,8 @@ jobs:
 
       - name: generate raster mbtiles from vector pmtiles
         run: |
+          mkdir -p styles
+        
           docker run -d --name tileserver -p 8080:80 \
             -v $(pwd):/data maptiler/tileserver-gl -c /data/config.json
           
