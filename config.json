@@ -3,13 +3,18 @@
     "paths": {
       "root": ".",
       "styles": "styles",
-      "mbtiles": "."
+      "pmtiles": ".",
+      "fonts": "fonts",
+      "sprites": "sprites"
     },
     "serveStaticMaps": true
   },
   "styles": {
     "basic": {
-      "style": "style.json"
+      "style": "style.json",
+      "tilejson": {
+        "bounds": [113.8, 22.1, 114.5, 22.6]
+      }
     }
   },
   "data": {
