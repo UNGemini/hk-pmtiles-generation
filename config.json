@@ -11,5 +11,10 @@
     "basic": {
       "style": "style.json"
     }
+  },
+  "data": {
+    "hong-kong-vector": {
+      "pmtiles": "hong-kong-vector.pmtiles"
+    }
   }
 }
