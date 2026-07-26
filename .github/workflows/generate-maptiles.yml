@@ -70,20 +70,23 @@ jobs:
 
       - name: prepare data + style + config
         run: |
-          mkdir -p data styles fonts sprites
+          mkdir -p styles fonts sprites
 
-          # move the pmtiles
+          # Move the vector tiles
           if [ -f "hong-kong.pmtiles" ]; then
             mv hong-kong.pmtiles hong-kong-vector.pmtiles
           elif [ -f "vector-tiles/hong-kong.pmtiles" ]; then
             mv vector-tiles/hong-kong.pmtiles hong-kong-vector.pmtiles
           else
-            echo "hong-kong.pmtiles not found"
+            echo "Error: hong-kong.pmtiles not found"
             ls -la
             exit 1
           fi
 
-          # config.json (fonts & sprites directories now exist)
+          # Copy the style that is already in the repo
+          cp style.json styles/style.json
+
+          # Write a clean config.json
           cat > config.json << 'EOF'
           {
             "options": {
@@ -109,24 +112,6 @@ jobs:
                 "pmtiles": "hong-kong-vector.pmtiles"
               }
             }
-          }
-          EOF
-
-          # style.json – make sure the source is correct
-          # (paste your full style here, only change the source URL)
-          cat > styles/style.json << 'EOF'
-          {
-            "version": 8,
-            "name": "basic",
-            "glyphs": "https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf",
-            "sprite": "https://protomaps.github.io/basemaps-assets/sprites/v4/light",
-            "sources": {
-              "protomaps": {
-                "type": "vector",
-                "url": "pmtiles://hong-kong-vector.pmtiles"
-              }
-            },
-            "layers": [ ... your full layers array ... ]
           }
           EOF
     
