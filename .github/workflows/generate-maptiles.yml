@@ -143,24 +143,38 @@ jobs:
 
       - name: start tileserver and scrape tiles
         run: |
-          # Start tileserver in background with virtual framebuffer
-          xvfb-run -a tileserver-gl config.json --port 8080 &
+          # Start tileserver and capture logs
+          xvfb-run -a tileserver-gl config.json --port 8080 > tileserver.log 2>&1 &
           TILESERVER_PID=$!
+          echo "Tileserver PID: $TILESERVER_PID"
 
-          echo "Waiting for tileserver to start..."
-          for i in {1..60}; do
-            if curl -sf http://127.0.0.1:8080/styles.json | grep -q basic; then
-              echo "Style is ready!"
+          echo "Waiting for tileserver..."
+          for i in {1..40}; do
+            if curl -sf http://127.0.0.1:8080/health > /dev/null; then
+              echo "Health check passed"
               break
             fi
-            echo "Waiting... ($i)"
+            # Show logs if it's taking long
+            if [ $i -eq 10 ] || [ $i -eq 20 ]; then
+              echo "===== tileserver.log so far ====="
+              cat tileserver.log || true
+            fi
             sleep 3
           done
 
-          echo "===== /styles.json ====="
-          curl -s http://127.0.0.1:8080/styles.json || true
+          echo "===== Full tileserver.log ====="
+          cat tileserver.log || true
 
-          # Write and run the scraper
+          echo "===== /styles.json ====="
+          curl -s http://127.0.0.1:8080/styles.json || echo "styles.json failed"
+
+          # Check if process is still running
+          if ! kill -0 $TILESERVER_PID 2>/dev/null; then
+            echo "ERROR: tileserver process has already died"
+            exit 1
+          fi
+
+          # ----- scraper (same as before) -----
           cat > scrape_raster.py << 'EOF'
           import urllib.request
           import sqlite3
@@ -168,7 +182,7 @@ jobs:
           import sys
 
           min_lng, min_lat, max_lng, max_lat = 113.8, 22.1, 114.5, 22.6
-          min_zoom, max_zoom = 0, 14
+          min_zoom, max_zoom = 0, 12   # temporarily lower maxzoom for testing
 
           def deg2num(lat_deg, lon_deg, zoom):
               lat_rad = math.radians(lat_deg)
@@ -184,7 +198,7 @@ jobs:
           c.execute("INSERT INTO metadata VALUES ('format', 'png');")
           c.execute(f"INSERT INTO metadata VALUES ('bounds', '{min_lng},{min_lat},{max_lng},{max_lat}');")
           c.execute("INSERT INTO metadata VALUES ('minzoom', '0');")
-          c.execute("INSERT INTO metadata VALUES ('maxzoom', '14');")
+          c.execute("INSERT INTO metadata VALUES ('maxzoom', '12');")
           c.execute('CREATE TABLE tiles (zoom_level integer, tile_column integer, tile_row integer, tile_data blob);')
           c.execute('CREATE UNIQUE INDEX tile_index on tiles (zoom_level, tile_column, tile_row);')
 
@@ -201,7 +215,7 @@ jobs:
                       url = f"http://127.0.0.1:8080/styles/basic/{z}/{x}/{y}.png"
                       try:
                           req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-                          with urllib.request.urlopen(req, timeout=30) as response:
+                          with urllib.request.urlopen(req, timeout=20) as response:
                               tile_data = response.read()
                           tms_y = (2 ** z) - 1 - y
                           c.execute(
@@ -210,7 +224,7 @@ jobs:
                           )
                           total_tiles += 1
                       except Exception as e:
-                          if errors < 15:
+                          if errors < 10:
                               print(f"Failed {url}: {e}")
                           errors += 1
 
@@ -223,7 +237,6 @@ jobs:
 
           python3 scrape_raster.py
 
-          # Stop tileserver
           kill $TILESERVER_PID || true
 
       - name: download pmtiles cli
