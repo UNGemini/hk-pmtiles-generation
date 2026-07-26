@@ -77,17 +77,16 @@ jobs:
       - name: install system dependencies
         run: |
           sudo apt-get update
-          # Added libpng-dev and pkg-config to ensure headers match
-          sudo apt-get install -y libgl1-mesa-dev libgbm-dev libosmesa6-dev xvfb libpng-dev pkg-config
+          sudo apt-get install -y build-essential libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev libgl1-mesa-dev libgbm-dev libosmesa6-dev xvfb
 
       - name: setup node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: install tileserver-gl
-        # Force a rebuild of the native modules using the runner's installed libpng headers
-        run: npm install -g tileserver-gl --build-from-source
+      - name: install tileserver-gl and fix canvas
+        run: |
+          npm install -g tileserver-gl
 
       - name: prepare tileserver directories
         run: |
