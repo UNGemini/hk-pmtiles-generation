@@ -72,7 +72,7 @@ jobs:
         run: |
           mkdir -p styles fonts sprites
 
-          # Move the vector tiles
+          # Move the vector tiles artifact
           if [ -f "hong-kong.pmtiles" ]; then
             mv hong-kong.pmtiles hong-kong-vector.pmtiles
           elif [ -f "vector-tiles/hong-kong.pmtiles" ]; then
@@ -83,10 +83,10 @@ jobs:
             exit 1
           fi
 
-          # Copy the style that is already in the repo
+          # Use the style.json that is already in the repository
           cp style.json styles/style.json
 
-          # Write a clean config.json
+          # Write config.json
           cat > config.json << 'EOF'
           {
             "options": {
